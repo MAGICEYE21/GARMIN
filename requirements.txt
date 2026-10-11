@@ -3,3 +3,4 @@ garminconnect==0.3.17
 curl_cffi>=0.7
 keyring>=25
 flask>=3.0
+waitress>=3.0

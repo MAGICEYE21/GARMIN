@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template: install.sh fills in __PROJECT__ and __LOGS__. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.garmin-health.web</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__PROJECT__/bin/garmin-health</string>
+        <string>serve</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>__PROJECT__</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+    <key>StandardOutPath</key>
+    <string>__LOGS__/web.log</string>
+    <key>StandardErrorPath</key>
+    <string>__LOGS__/web.log</string>
+</dict>
+</plist>
