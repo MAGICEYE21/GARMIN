@@ -1,0 +1,5 @@
+#!/bin/sh
+# Runs the pipeline with the project's virtualenv: bin/garmin-health <command>
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$DIR" || exit 1
+exec "$DIR/.venv/bin/python" -m garmin_health "$@"

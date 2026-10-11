@@ -1,0 +1,5 @@
+# Pinned on purpose: Garmin login changes often. See README "When Garmin breaks login".
+garminconnect==0.3.17
+curl_cffi>=0.7
+keyring>=25
+flask>=3.0

@@ -1,0 +1,10 @@
+.venv
+__pycache__/
+*.pyc
+.pytest_cache/
+# Personal data never belongs in git
+*.db
+*.db-*
+garmin_tokens.json
+state.json
+*.log
