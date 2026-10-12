@@ -131,6 +131,17 @@ def sync(
     conn.commit()
     log.info("Last watch sync: %s", last_sync)
 
+    # Fitness age changes about weekly, so one request per run (not per day).
+    try:
+        fa = paced(lambda: api.get_fitnessage_data(today.isoformat()), "fitness age")
+        if extract.parse_fitness_age(fa):
+            db.set_meta(conn, "fitness_age", json.dumps(fa))
+            conn.commit()
+    except GarminConnectTooManyRequestsError:
+        raise
+    except Exception as e:  # not worth failing the run over
+        log.warning("Fitness age unavailable: %s", e)
+
     days = days_to_fetch(
         db.daily_status(conn), today, config.BACKFILL_DAYS, since=since, refetch=refetch
     )

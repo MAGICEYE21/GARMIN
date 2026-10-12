@@ -18,7 +18,7 @@ from typing import Any
 
 from . import config
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 DAILY_COLUMNS = [
     # sleep
@@ -34,6 +34,8 @@ DAILY_COLUMNS = [
     "readiness_score", "readiness_level", "readiness_feedback",
     "training_status", "acute_load", "chronic_load", "acwr", "acwr_status",
     "vo2max_running", "vo2max_cycling",
+    # blood oxygen (day and overnight)
+    "spo2_avg", "spo2_low", "spo2_sleep_avg", "spo2_sleep_low",
 ]  # fmt: skip
 
 ACTIVITY_COLUMNS = [
@@ -90,6 +92,11 @@ def connect(path: Path | None = None) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(_SCHEMA)
+    # Columns added after a database was created; `reparse` fills them from raw.
+    have = {r[1] for r in conn.execute("PRAGMA table_info(daily)")}
+    for col in DAILY_COLUMNS:
+        if col not in have:
+            conn.execute(f"ALTER TABLE daily ADD COLUMN {col}")
     conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
     return conn
 

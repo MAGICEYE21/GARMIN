@@ -67,6 +67,8 @@ class FakeGarmin:
         k = self._seed(d)
         return {
             "totalSteps": 8000 + 500 * k,
+            "averageSpo2": 95.0,
+            "lowestSpo2": 88,
             "dailyStepGoal": 10000,
             "restingHeartRate": 46 + k,
             "averageStressLevel": 25 + k,
@@ -93,6 +95,8 @@ class FakeGarmin:
                 "awakeSleepSeconds": 1200,
                 "sleepStartTimestampGMT": ms(end - timedelta(hours=8)),
                 "sleepEndTimestampGMT": ms(end),
+                "averageSpO2Value": 96.0,
+                "lowestSpO2Value": 86,
                 "sleepScores": {"overall": {"value": 70 + 3 * k, "qualifierKey": "GOOD"}},
             },
             "restingHeartRate": 47,
@@ -141,6 +145,10 @@ class FakeGarmin:
                 }
             },
         }
+
+    def get_fitnessage_data(self, d):
+        self._call("get_fitnessage_data", d)
+        return {"chronologicalAge": 25, "fitnessAge": 23.746, "achievableFitnessAge": 18.0}
 
     def get_max_metrics(self, d):
         self._call("get_max_metrics", d)

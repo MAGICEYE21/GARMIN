@@ -92,6 +92,8 @@ def parse_sleep(sleep: Any) -> dict[str, Any]:
         # The *GMT fields are reliable; *Local ones are double-shifted for some users.
         "sleep_start": _ms_to_local_iso(dto.get("sleepStartTimestampGMT")),
         "sleep_end": _ms_to_local_iso(dto.get("sleepEndTimestampGMT")),
+        "spo2_sleep_avg": _pos(dto.get("averageSpO2Value")),
+        "spo2_sleep_low": _int(_pos(dto.get("lowestSpO2Value"))),
     }
 
 
@@ -119,6 +121,8 @@ def parse_summary(summary: Any) -> dict[str, Any]:
         "stress_max": _int(_pos(s.get("maxStressLevel"))),
         "steps": _int(_pos(s.get("totalSteps"))),
         "step_goal": _int(_pos(s.get("dailyStepGoal"))),
+        "spo2_avg": _pos(s.get("averageSpo2")),
+        "spo2_low": _int(_pos(s.get("lowestSpo2"))),
     }
 
 
@@ -196,6 +200,18 @@ def parse_day(raw: dict[str, Any]) -> dict[str, Any]:
     if v.get("hrv_last_night") is None:
         v["hrv_last_night"] = _pos(dig(raw.get("sleep"), "avgOvernightHrv"))
     return v
+
+
+def parse_fitness_age(fa: Any) -> dict[str, Any] | None:
+    """Garmin's fitness age (updated about weekly) and the real age it compares to."""
+    if not isinstance(fa, dict) or _pos(fa.get("fitnessAge")) is None:
+        return None
+    return {
+        "fitness_age": round(fa["fitnessAge"], 1),
+        "chronological_age": _int(_pos(fa.get("chronologicalAge"))),
+        "achievable_fitness_age": _pos(fa.get("achievableFitnessAge")),
+        "updated": fa.get("lastUpdated"),
+    }
 
 
 def parse_activity(a: dict[str, Any]) -> dict[str, Any]:

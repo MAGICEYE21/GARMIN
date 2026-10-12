@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timedelta
 from statistics import mean
 from typing import Any
 
-from . import config, db
+from . import config, db, extract
 
 HRV_STATUS_SCORE = {"BALANCED": 80, "UNBALANCED": 50, "LOW": 35, "POOR": 20}
 
@@ -135,6 +136,7 @@ def build(conn, today: date | None = None) -> dict[str, Any]:
         }
 
     yesterday = by_date.get((today - timedelta(days=1)).isoformat()) or {}
+    fitness = fitness_block(conn, rows, current)
     acts = db.activities_range(conn, (today - timedelta(days=7)).isoformat(), today.isoformat())
 
     return {
@@ -153,6 +155,29 @@ def build(conn, today: date | None = None) -> dict[str, Any]:
         "baseline_30d": baseline,
         "averages": {"7d": trend(7), "30d": trend(30), "90d": trend(90)},
         "activities_7d": acts,
+        "fitness": fitness,
+    }
+
+
+def fitness_block(conn, rows: list[dict], current: dict) -> dict[str, Any]:
+    """Fitness age, VO2 max and blood oxygen for the summary."""
+    raw = db.get_meta(conn, "fitness_age")
+    fa = extract.parse_fitness_age(json.loads(raw)) if raw else None
+    vo2 = next((r["vo2max_running"] for r in reversed(rows) if r.get("vo2max_running")), None)
+    age = fa and fa.get("chronological_age")
+    rhr = current.get("resting_hr")
+    estimate = None
+    if vo2 is None and age and rhr:
+        # Uth et al. 2004: VO2max ~ 15.3 x HRmax / HRrest, HRmax = 208 - 0.7 x age.
+        # A rough estimate, shown only when Garmin has no VO2 max of its own.
+        estimate = round(15.3 * (208 - 0.7 * age) / rhr, 1)
+    return {
+        **(fa or {}),
+        "vo2max": vo2,
+        "vo2max_estimate": estimate,
+        "spo2_sleep_avg": current.get("spo2_sleep_avg"),
+        "spo2_sleep_low": current.get("spo2_sleep_low"),
+        "spo2_avg": current.get("spo2_avg"),
     }
 
 
@@ -197,6 +222,7 @@ def trends(conn, days: int, today: date | None = None) -> dict[str, Any]:
             "chronic": col("chronic_load", nd=0),
         },
         "stress": col("stress_avg"),
+        "spo2": {"sleep_avg": col("spo2_sleep_avg"), "sleep_low": col("spo2_sleep_low")},
         "steps": col("steps"),
     }
 
@@ -273,8 +299,23 @@ def text(s: dict[str, Any]) -> str:
             f" / chronic {_n(t.get('chronic_load'))} (ratio {_n(t.get('acwr'), nd=1)},"
             f" {_pretty(t.get('acwr_status'))})."
         )
-    if t.get("vo2max_running") is not None:
-        lines.append(f"VO2 max {_n(t['vo2max_running'], nd=1)}.")
+    fit = s.get("fitness") or {}
+    if fit.get("spo2_sleep_avg") is not None:
+        lines.append(
+            f"Blood oxygen overnight: average {_n(fit['spo2_sleep_avg'])}%,"
+            f" lowest {_n(fit.get('spo2_sleep_low'))}%."
+        )
+    if fit.get("fitness_age") is not None:
+        lines.append(
+            f"Fitness age {_n(fit['fitness_age'], nd=1)} (actual age {_n(fit.get('chronological_age'))})."
+        )
+    if fit.get("vo2max") is not None:
+        lines.append(f"VO2 max {_n(fit['vo2max'], nd=1)}.")
+    elif fit.get("vo2max_estimate") is not None:
+        lines.append(
+            f"VO2 max: none from Garmin; rough estimate from resting HR and age"
+            f" {_n(fit['vo2max_estimate'], nd=1)}."
+        )
 
     y = s["yesterday_activity"]
     if y.get("steps") is not None:

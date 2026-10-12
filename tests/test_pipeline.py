@@ -416,3 +416,38 @@ def test_sync_button_guards(tmp_path, monkeypatch):
     auth.set_rate_limit_cooldown()
     assert client.post("/api/sync", headers=hdr).get_json()["reason"] == "blocked"
     assert started == [1]
+
+
+def test_spo2_fitness_age_and_vo2(conn):
+    run_sync(conn, FakeGarmin(TODAY))
+    s = summary.build(conn, today=TODAY)
+    fit = s["fitness"]
+    assert fit["spo2_sleep_avg"] == 96 and fit["spo2_sleep_low"] == 86
+    assert fit["fitness_age"] == 23.7 and fit["chronological_age"] == 25
+    assert fit["vo2max"] == pytest.approx(52.1) and fit["vo2max_estimate"] is None
+    t = summary.text(s)
+    assert "Blood oxygen overnight: average 96%" in t and "Fitness age 23.7" in t
+    assert summary.trends(conn, 7, today=TODAY)["spo2"]["sleep_avg"][-1] == 96
+
+
+def test_vo2_estimate_only_without_garmin_value(conn):
+    from garmin_health import summary as sm
+
+    fit = sm.fitness_block(conn, [{"vo2max_running": None}], {"resting_hr": 49})
+    assert fit["vo2max"] is None and fit["vo2max_estimate"] is None  # no age known
+    db.set_meta(conn, "fitness_age", '{"fitnessAge": 23.7, "chronologicalAge": 25}')
+    fit = sm.fitness_block(conn, [{"vo2max_running": None}], {"resting_hr": 49})
+    assert fit["vo2max_estimate"] == pytest.approx(59.5, abs=0.1)
+
+
+def test_old_database_gets_new_columns(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.execute("CREATE TABLE daily (date TEXT PRIMARY KEY, sleep_score, fetched_at TEXT NOT NULL, final INTEGER NOT NULL DEFAULT 0)")
+    old.close()
+    c = db.connect(path)
+    cols = {r[1] for r in c.execute("PRAGMA table_info(daily)")}
+    assert {"spo2_avg", "spo2_sleep_low", "resting_hr"} <= cols
+    c.close()

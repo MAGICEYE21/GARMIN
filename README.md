@@ -18,7 +18,8 @@ launchd (always on) ──> bin/garmin-health serve ──> http://127.0.0.1:876
 night, 7-day average, status, baseline), resting heart rate, Body Battery (high,
 low, at wake, charged, drained), stress (average, max), steps and step goal,
 training readiness (the morning score), training status with acute and chronic
-load, and VO2 max. For every activity it stores the summary, the full activity
+load, VO2 max, and blood oxygen (SpO2, day and overnight). Fitness age is
+fetched once per run. For every activity it stores the summary, the full activity
 record, the splits and the detail time series (HR, pace, GPS; compressed). It
 also records when the watch last synced and flags data as **stale** when that
 sync is more than 12 hours old.
@@ -113,8 +114,10 @@ bin/garmin-health logout     # delete cached tokens (--forget also removes the K
 - `/` is a phone-first dashboard, in Hebrew by default (`?lang=en` for
   English). The first screen shows only today: a recovery ring with one plain
   sentence, small rings for sleep, Body Battery and readiness, last night's
-  sleep stages, HRV against your range, resting HR, stress, steps and recent
-  activities. The side menu (top corner) opens 7/30/90-day trend charts, the
+  sleep stages, HRV against your range, resting HR, stress, steps, fitness age,
+  overnight blood oxygen, VO2 max and recent activities. When Garmin has no VO2
+  max (it needs GPS runs or rides), a rough estimate from resting HR and age is
+  shown, marked with ≈. The side menu (top corner) opens 7/30/90-day trend charts, the
   full activity list, Sync now, and the language switch.
 - **On an iPhone:** open the dashboard in Safari, tap Share > **Add to Home
   Screen**. It opens full screen like an app and refreshes when you return to it.

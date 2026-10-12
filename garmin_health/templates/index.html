@@ -106,6 +106,7 @@
   .meter { grid-column: 1 / -1; position: relative; height: 6px; border-radius: 3px; background: var(--card2); margin-top: 6px; direction: ltr; }
   .meter .band { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: rgba(43, 217, 124, .28); }
   .meter .fill { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 3px; width: 0; transition: width .9s cubic-bezier(.2, .8, .2, 1); }
+  .meter .tick { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--muted); }
   .meter .dot { position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; border: 2px solid var(--card); }
 
   /* activities */
@@ -202,6 +203,8 @@
 
     <div class="card" id="vitals"><h3 data-t="body"></h3></div>
 
+    <div class="card" id="fitness"></div>
+
     <div class="card">
       <h3><span data-t="acts"></span><a href="#activities" data-t="all"></a></h3>
       <div id="acts-preview"></div>
@@ -218,6 +221,7 @@
     <div class="card"><h3>Body Battery</h3><div class="chart"><canvas id="c-bb"></canvas></div></div>
     <div class="card"><h3 data-t="load"></h3><div class="chart"><canvas id="c-load"></canvas></div></div>
     <div class="card"><h3 data-t="stressSteps"></h3><div class="chart"><canvas id="c-stress"></canvas></div></div>
+    <div class="card"><h3 data-t="spo2Title"></h3><div class="chart"><canvas id="c-spo2"></canvas></div></div>
   </section>
 
   <section id="v-activities" class="view">
@@ -268,6 +272,12 @@ const T = {
     hours: "hours", lastNight: "Last night", weekly: "7-day avg", baseline: "Range",
     high: "High", lowL: "Low", atWake: "At wake", daily: "Activity", acute: "Acute", chronic: "Chronic",
     days: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    fitTitle: "Fitness and oxygen", spo2Title: "Blood oxygen (overnight)",
+    fitAge: "Fitness age", fitSub: (a, d) => `Actual age ${a}` + (d >= 0.5 ? ` · ${d.toFixed(1)} years younger` : d <= -0.5 ? ` · ${(-d).toFixed(1)} years older` : ""),
+    fitScale: (lo, a) => `Best reachable ${lo} · actual ${a}`,
+    spo2: "Blood oxygen", spo2Sub: lo => `Overnight average · lowest ${lo}%`,
+    vo2: "VO2 max", vo2Garmin: "From Garmin", vo2Est: "Estimate from resting HR and age. Garmin has no value yet (needs a GPS run or ride)",
+    avg: "Average", lowest: "Lowest",
     types: {},
     levels: {},
   },
@@ -299,6 +309,12 @@ const T = {
     hours: "שעות", lastNight: "לילה אחרון", weekly: "ממוצע 7 ימים", baseline: "טווח",
     high: "גבוה", lowL: "נמוך", atWake: "בהתעוררות", daily: "פעילות", acute: "אקוטי", chronic: "כרוני",
     days: ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"],
+    fitTitle: "כושר וחמצן", spo2Title: "רוויית חמצן בלילה",
+    fitAge: "גיל כושר", fitSub: (a, d) => `גיל בפועל ${a}` + (d >= 0.5 ? ` · צעיר ב-${d.toFixed(1)} שנים` : d <= -0.5 ? ` · מבוגר ב-${(-d).toFixed(1)} שנים` : ""),
+    fitScale: (lo, a) => `הכי טוב שאפשר ${lo} · בפועל ${a}`,
+    spo2: "רוויית חמצן", spo2Sub: lo => `ממוצע בלילה · מינימום ${lo}%`,
+    vo2: "VO2 max", vo2Garmin: "מ-Garmin", vo2Est: "הערכה לפי דופק מנוחה וגיל. ל-Garmin אין עדיין ערך (נדרשת ריצה או רכיבה עם GPS)",
+    avg: "ממוצע", lowest: "מינימום",
     levels: { POOR: "חלשה", LOW: "נמוכה", MODERATE: "בינונית", HIGH: "גבוהה", PRIME: "מעולה" },
     types: {
       running: "ריצה", trail_running: "ריצת שטח", treadmill_running: "ריצה על הליכון", walking: "הליכה", hiking: "טיול רגלי",
@@ -445,6 +461,8 @@ async function loadToday() {
   $("vitals").innerHTML = `<h3>${T.body}</h3>` + rows.join("");
   raf2(() => document.querySelectorAll("#vitals .fill").forEach(el => el.style.width = el.dataset.w + "%"));
 
+  renderFitness(s.fitness || {});
+
   const acts = s.activities_7d.slice().reverse().slice(0, 3);
   $("acts-preview").innerHTML = acts.length ? acts.map(actRow).join("") : `<div class="empty">${T.noActs}</div>`;
 
@@ -455,6 +473,37 @@ async function loadToday() {
   ].filter(Boolean).join("<br>");
 
   loadWeek();
+}
+
+function renderFitness(fit) {
+  const rows = [];
+  if (fit.fitness_age != null) {
+    const a = fit.chronological_age, fa = fit.fitness_age, best = fit.achievable_fitness_age;
+    let meter = "";
+    if (a != null && best != null) {
+      const lo = Math.min(best, fa) - 2, hi = Math.max(a, fa) + 2, pos = x => ((x - lo) / (hi - lo)) * 100;
+      meter = `<div class="meter"><div class="band" style="left:${pos(best)}%;width:${pos(a) - pos(best)}%"></div>
+        <div class="tick" style="left:${pos(a)}%"></div><div class="dot" style="left:${pos(fa)}%;background:var(--good)"></div></div>
+        <div class="k" style="grid-column:1/-1"><small class="num">${T.fitScale(Math.round(best), a)}</small></div>`;
+    }
+    rows.push(`<div class="vital"><div class="k">${T.fitAge}<small>${a != null ? T.fitSub(a, a - fa) : ""}</small></div>
+      <div class="v num">${fa.toFixed(1)}</div>${meter}</div>`);
+  }
+  if (fit.spo2_sleep_avg != null) {
+    const pos = x => Math.max(0, Math.min(100, ((x - 80) / 20) * 100));
+    rows.push(`<div class="vital"><div class="k">${T.spo2}<small>${T.spo2Sub(fit.spo2_sleep_low ?? "–")}</small></div>
+      <div class="v num">${Math.round(fit.spo2_sleep_avg)}<small>%</small></div>
+      <div class="meter"><div class="fill" data-w="${pos(fit.spo2_sleep_avg)}" style="background:var(--bb)"></div>
+      ${fit.spo2_sleep_low != null ? `<div class="tick" style="left:${pos(fit.spo2_sleep_low)}%"></div>` : ""}</div></div>`);
+  }
+  const vo2 = fit.vo2max ?? fit.vo2max_estimate;
+  if (vo2 != null) {
+    rows.push(`<div class="vital"><div class="k">${T.vo2}<small>${fit.vo2max != null ? T.vo2Garmin : T.vo2Est}</small></div>
+      <div class="v num">${fit.vo2max != null ? "" : "≈"}${vo2.toFixed(1)}</div></div>`);
+  }
+  $("fitness").style.display = rows.length ? "" : "none";
+  $("fitness").innerHTML = `<h3>${T.fitTitle}</h3>` + rows.join("");
+  raf2(() => document.querySelectorAll("#fitness .fill").forEach(el => el.style.width = el.dataset.w + "%"));
 }
 
 async function loadWeek() {
@@ -516,8 +565,15 @@ async function loadTrends(n) {
       line(T.stress, d.stress, css("--ready"), { yAxisID: "y" }),
       bar(T.steps, d.steps, "rgba(43,217,124,.35)", { yAxisID: "y2" }),
     ] }, options: { scales: { x: { grid: { display: false } }, y: { min: 0, max: 100 }, y2: { position: "right", grid: { display: false } } } } });
+  drawSpo2(d, labels, n);
 }
 document.querySelectorAll("#range button").forEach(b => b.addEventListener("click", () => loadTrends(Number(b.dataset.days))));
+function drawSpo2(d, labels, n) {
+  draw("c-spo2", { data: { labels, datasets: [
+      line(T.avg, d.spo2.sleep_avg, css("--bb"), { pointRadius: n <= 30 ? 2 : 0 }),
+      line(T.lowest, d.spo2.sleep_low, "#c9ccd2", { borderDash: [4, 3], borderWidth: 1.5 }),
+    ] }, options: { scales: { x: { grid: { display: false } }, y: { suggestedMin: 80, max: 100 } } } });
+}
 
 async function loadActivities() {
   const acts = await (await fetch("/api/activities?days=90")).json();
