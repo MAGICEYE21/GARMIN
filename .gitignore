@@ -8,4 +8,4 @@ __pycache__/
 garmin_tokens.json
 state.json
 *.log
-iphone-qr.png
+iphone-qr*.png

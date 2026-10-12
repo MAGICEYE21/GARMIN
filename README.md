@@ -161,6 +161,12 @@ once (later runs keep the setting), then browse to
 `http://<your-mac-name>.local:8765/`. It has no password, so only do this on a
 network you trust.
 
+To open it away from home, install Tailscale on the Mac
+(`brew install tailscale`, `sudo brew services start tailscale`,
+`sudo tailscale up`) and on the phone, signed in to the same account, then use
+`http://<the Mac's Tailscale IP>:8765/` (`tailscale ip -4`). Only your own
+devices can reach it; nothing is opened to the internet.
+
 ## Daily JSON in Google Drive (for a cloud agent)
 
 At the end of every sync, including a failed or skipped one, the pipeline
