@@ -1,6 +1,6 @@
 #!/bin/bash
 # ./install.sh           create .venv and install dependencies
-# ./install.sh launchd   install/reload the 06:30 + 21:00 sync job and the dashboard
+# ./install.sh launchd   install/reload the two-hourly sync job and the dashboard
 # ./install.sh all       everything: venv, Garmin login, schedule, first sync, dashboard
 #
 # GARMIN_HEALTH_HOST=0.0.0.0 ./install.sh launchd   also serve the dashboard to
@@ -57,7 +57,7 @@ install_launchd() {
         echo "Loaded $label"
     done
     echo
-    echo "Sync runs at 06:30 and 21:00. Logs: $LOGS"
+    echo "Sync runs every two hours at :30. Logs: $LOGS"
     echo "Dashboard: http://127.0.0.1:8765/"
     if [ "$host" = "0.0.0.0" ]; then
         echo "On your phone (same Wi-Fi): http://$(scutil --get LocalHostName 2>/dev/null || hostname -s).local:8765/"

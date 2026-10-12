@@ -1,11 +1,11 @@
 # Garmin health pipeline
 
-Pulls your Garmin Connect data (Fenix 8 or any Garmin watch) twice a day into a
+Pulls your Garmin Connect data (Fenix 8 or any Garmin watch) every two hours into a
 local SQLite database on your Mac mini, and serves a small dashboard plus a JSON
 and text summary you can hand to an AI assistant. Everything stays on your Mac.
 
 ```
-launchd 06:30 / 21:00 ──> bin/garmin-health sync ──> Garmin Connect (python-garminconnect)
+launchd every 2 h   ──> bin/garmin-health sync ──> Garmin Connect (python-garminconnect)
                                    │
                                    ▼
              ~/Library/Application Support/garmin-health/health.db  (SQLite)
@@ -81,7 +81,7 @@ This installs two LaunchAgents into `~/Library/LaunchAgents`:
 
 | Job | What it does |
 | --- | --- |
-| `com.garmin-health.sync` | runs `sync` at **06:30** and **21:00**. If the Mac was asleep at that time, launchd runs it on wake. |
+| `com.garmin-health.sync` | runs `sync` every two hours at :30 (00:30, 02:30 … 06:30 … 22:30). If the Mac was asleep at that time, launchd runs it on wake. |
 | `com.garmin-health.web` | keeps the dashboard running at `127.0.0.1:8765` |
 
 To run a sync right away: `launchctl kickstart gui/$(id -u)/com.garmin-health.sync`.
