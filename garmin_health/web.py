@@ -4,6 +4,8 @@
                        on an iPhone home screen (Share > Add to Home Screen)
   /api/trends?days=30  chart series (7, 30 or 90)
   /api/activities      activities of the last ?days=30
+  /api/day/YYYY-MM-DD  minute-level night and day series for one day
+  /api/activity/ID     one activity: stats, time series, route, laps, HR zones
   /api/summary         health summary JSON
   /api/summary.txt     short daily text summary for an AI assistant
   /api/status          freshness / last run / whether a sync is running
@@ -21,7 +23,7 @@ from pathlib import Path
 
 from flask import Flask, Response, jsonify, render_template, request
 
-from . import auth, config, db, summary
+from . import auth, config, db, detail, summary
 
 # The Sync button can't start runs closer together than this, however often
 # it is clicked. A run whose watch data hasn't changed costs only two
@@ -46,13 +48,22 @@ def sync_running() -> bool:
 def start_sync() -> None:
     project = Path(__file__).resolve().parent.parent
     subprocess.Popen(
-        [sys.executable, "-m", "garmin_health", "sync"],
+        [sys.executable, "-m", "garmin_health", "sync", "--quick"],
         cwd=project,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
+
+
+def _hr_max(c) -> float | None:
+    """Max HR for zones: the higher of the age formula and the highest HR seen."""
+    seen = c.execute("SELECT MAX(max_hr) FROM activities").fetchone()[0]
+    raw = db.get_meta(c, "fitness_age")
+    age = json.loads(raw).get("chronologicalAge") if raw else None
+    formula = 208 - 0.7 * age if age else None
+    return max(v for v in (seen, formula) if v) if (seen or formula) else None
 
 
 def create_app(db_path=None) -> Flask:
@@ -64,7 +75,10 @@ def create_app(db_path=None) -> Flask:
     @app.get("/")
     def index():
         lang = "en" if request.args.get("lang") == "en" else "he"
-        return render_template("index.html", lang=lang)
+        # Cache-busting for app.js/app.css, so a home-screen app picks up changes.
+        static = Path(app.static_folder)
+        version = int(max((static / f).stat().st_mtime for f in ("app.js", "app.css")))
+        return render_template("index.html", lang=lang, version=version)
 
     @app.get("/manifest.webmanifest")
     def manifest():
@@ -82,6 +96,27 @@ def create_app(db_path=None) -> Flask:
             "icons": icons,
         }
         return Response(json.dumps(body), mimetype="application/manifest+json")
+
+    @app.get("/api/day/<ds>")
+    def api_day(ds):
+        try:
+            d = date.fromisoformat(ds)
+        except ValueError:
+            return jsonify(error="bad date"), 400
+        c = conn()
+        try:
+            return jsonify(detail.day(c, d))
+        finally:
+            c.close()
+
+    @app.get("/api/activity/<int:aid>")
+    def api_activity(aid):
+        c = conn()
+        try:
+            out = detail.activity(c, aid, hr_max=_hr_max(c))
+        finally:
+            c.close()
+        return jsonify(out) if out else (jsonify(error="not found"), 404)
 
     @app.get("/api/activities")
     def api_activities():

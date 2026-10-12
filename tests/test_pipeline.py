@@ -478,3 +478,53 @@ def test_run_soon_after_upload_still_refetches(conn):
     _sync_now(conn, api)
     result = _sync_now(conn, api)
     assert not result.get("unchanged")  # Garmin may still be computing scores
+
+
+def test_day_detail_has_night_and_day_series(conn):
+    run_sync(conn, FakeGarmin(TODAY))
+    from garmin_health import detail
+
+    d = detail.day(conn, TODAY)
+    assert d["has_intraday"] and len(d["hr"]) == 10 and len(d["body_battery"]) == 10
+    assert all(v >= 0 for _, v in d["stress"])  # Garmin's -1 "no reading" dropped
+    assert d["steps"][0][1] == 120
+    assert d["sleep"]["start"] < d["sleep"]["end"]
+
+
+def test_intraday_backfill_is_bounded(conn):
+    from garmin_health import sync as sy
+
+    run_sync(conn, FakeGarmin(TODAY))
+    conn.execute("DELETE FROM raw WHERE source IN ('stress', 'heart_rate', 'steps')")
+    conn.commit()
+    assert len(db.days_missing_sources(conn, list(sy.INTRADAY))) == 91
+    api = FakeGarmin(TODAY, datetime(2026, 10, 11, 7, 30).astimezone())
+    result, _ = run_sync(conn, api)
+    assert result["backfilled"] == sy.INTRADAY_BACKFILL_PER_RUN
+    # quick runs (the dashboard button) never backfill
+    result, _ = run_sync(conn, FakeGarmin(TODAY, datetime(2026, 10, 11, 7, 45).astimezone()), quick=True)
+    assert result["backfilled"] == 0
+
+
+def test_activity_detail_route(tmp_path):
+    import zlib, json as js
+    from garmin_health.web import create_app
+
+    path = tmp_path / "w.db"
+    c = db.connect(path)
+    run_sync(c, FakeGarmin(date.today()))
+    aid = c.execute("SELECT activity_id FROM activities LIMIT 1").fetchone()[0]
+    details = {
+        "metricDescriptors": [{"key": "sumDuration", "metricsIndex": 0}, {"key": "directHeartRate", "metricsIndex": 1}],
+        "activityDetailMetrics": [{"metrics": [i * 10, 100 + i]} for i in range(30)],
+        "geoPolylineDTO": {"polyline": [{"lat": 32 + i / 1000, "lon": 34} for i in range(5)]},
+    }
+    c.execute("UPDATE activities SET details_z=? WHERE activity_id=?", (zlib.compress(js.dumps(details).encode()), aid))
+    c.commit()
+    c.close()
+    client = create_app(path).test_client()
+    a = client.get(f"/api/activity/{aid}").get_json()
+    assert len(a["series"]["hr"]) == 30 and len(a["route"]) == 5 and sum(a["hr_zones"]) > 0
+    assert client.get("/api/activity/999").status_code == 404
+    assert client.get("/api/day/not-a-date").status_code == 400
+    assert client.get(f"/api/day/{TODAY}").get_json()["has_intraday"]

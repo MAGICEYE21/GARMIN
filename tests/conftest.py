@@ -148,6 +148,23 @@ class FakeGarmin:
             },
         }
 
+    def get_stress_data(self, d):
+        self._call("get_stress_data", d)
+        t0 = ms(datetime.fromisoformat(d + "T08:00:00").astimezone())
+        return {
+            "stressValuesArray": [[t0 + i * 180000, 20 + i % 30] for i in range(10)] + [[t0 + 1800000, -1]],
+            "bodyBatteryValuesArray": [[t0 + i * 180000, "MEASURED", 80 - i, 3.0] for i in range(10)],
+        }
+
+    def get_heart_rates(self, d):
+        self._call("get_heart_rates", d)
+        t0 = ms(datetime.fromisoformat(d + "T08:00:00").astimezone())
+        return {"heartRateValues": [[t0 + i * 120000, 60 + i] for i in range(10)], "minHeartRate": 48, "maxHeartRate": 150}
+
+    def get_steps_data(self, d):
+        self._call("get_steps_data", d)
+        return [{"startGMT": f"{d}T08:00:00.0", "steps": 120, "primaryActivityLevel": "active"}]
+
     def get_fitnessage_data(self, d):
         self._call("get_fitnessage_data", d)
         return {"chronologicalAge": 25, "fitnessAge": 23.746, "achievableFitnessAge": 18.0}

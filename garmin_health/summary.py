@@ -223,6 +223,8 @@ def trends(conn, days: int, today: date | None = None) -> dict[str, Any]:
         },
         "stress": col("stress_avg"),
         "spo2": {"sleep_avg": col("spo2_sleep_avg"), "sleep_low": col("spo2_sleep_low")},
+        "readiness": col("readiness_score"),
+        "vo2max": col("vo2max_running", nd=1),
         "steps": col("steps"),
     }
 

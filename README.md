@@ -19,7 +19,9 @@ night, 7-day average, status, baseline), resting heart rate, Body Battery (high,
 low, at wake, charged, drained), stress (average, max), steps and step goal,
 training readiness (the morning score), training status with acute and chronic
 load, VO2 max, and blood oxygen (SpO2, day and overnight). Fitness age is
-fetched once per run. For every activity it stores the summary, the full activity
+fetched once per run. Minute-level heart rate, stress, Body Battery and steps
+for each day are stored too; days stored before that feature are filled in
+10 per run, so the backfill is spread out. For every activity it stores the summary, the full activity
 record, the splits and the detail time series (HR, pace, GPS; compressed). It
 also records when the watch last synced and flags data as **stale** when that
 sync is more than 12 hours old.
@@ -112,13 +114,15 @@ bin/garmin-health logout     # delete cached tokens (--forget also removes the K
 ## Dashboard and API
 
 - `/` is a phone-first dashboard, in Hebrew by default (`?lang=en` for
-  English). The first screen shows only today: a recovery ring with one plain
-  sentence, small rings for sleep, Body Battery and readiness, last night's
-  sleep stages, HRV against your range, resting HR, stress, steps, fitness age,
-  overnight blood oxygen, VO2 max and recent activities. When Garmin has no VO2
-  max (it needs GPS runs or rides), a rough estimate from resting HR and age is
-  shown, marked with ≈. The side menu (top corner) opens 7/30/90-day trend charts, the
-  full activity list, Sync now, and the language switch.
+  English), with a floating tab bar: **Today** (recovery ring, a plain-language
+  verdict, and a tile per metric, each with a small chart), **Sleep** (sleep
+  stages timeline, stage totals, and overnight heart rate, HRV, blood oxygen,
+  breathing, stress and Body Battery), **Activities** (by week) and **Trends**
+  (7/30/90-day charts, language, sync). Tapping a tile opens that metric's
+  detail screen: minute-level chart for any day (arrows to move between days),
+  min/average/max, a 30-day trend, and what the number means. Tapping an
+  activity shows all of it: stats, route, heart rate with zones, time in each
+  zone, pace, depth (dives), cadence, water temperature and laps.
 - **On an iPhone:** open the dashboard in Safari, tap Share > **Add to Home
   Screen**. It opens full screen like an app and refreshes when you return to it.
   The phone has to reach the Mac (see `GARMIN_HEALTH_HOST` below).

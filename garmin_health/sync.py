@@ -41,6 +41,19 @@ SOURCES: dict[str, Callable[[Any, str], Any]] = {
     "max_metrics": lambda api, d: api.get_max_metrics(d),
 }
 
+# Minute-level series for the whole day, for the dashboard's detail screens.
+# Stored raw only; the stress response also carries Body Battery.
+INTRADAY: dict[str, Callable[[Any, str], Any]] = {
+    "stress": lambda api, d: api.get_stress_data(d),
+    "heart_rate": lambda api, d: api.get_heart_rates(d),
+    "steps": lambda api, d: api.get_steps_data(d),
+}
+SOURCES.update(INTRADAY)
+
+# Days stored before INTRADAY existed get these series a few at a time, so
+# filling 90 days is spread over many runs instead of one burst of requests.
+INTRADAY_BACKFILL_PER_RUN = 10
+
 # How long after midnight the watch must have synced for a day to be final.
 FINAL_SYNC_MARGIN = timedelta(hours=2)
 # Without a known sync time, treat a day as final after this long.
@@ -131,7 +144,9 @@ def sync(
     refetch: bool = False,
     sleep: Callable[[float], None] = time.sleep,
     request_delay: float | None = None,
+    quick: bool = False,
 ) -> dict[str, Any]:
+    """quick=True (the dashboard button) skips the slow intraday backfill."""
     today = today or date.today()
     delay = config.REQUEST_DELAY if request_delay is None else request_delay
     api = (connect or auth.connect)()
@@ -157,7 +172,11 @@ def sync(
     )
     if not (since or refetch) and _nothing_new(conn, last_sync, previous_sync, days):
         log.info("Watch hasn't uploaded since %s; nothing new to fetch", last_sync)
-        return {"unchanged": True, "last_sync": last_sync, "days": 0, "activities": 0, "detailed": 0}
+        filled = 0 if quick else _backfill_intraday(conn, api, paced)
+        return {
+            "unchanged": True, "last_sync": last_sync, "days": 0, "activities": 0,
+            "detailed": 0, "backfilled": filled,
+        }  # fmt: skip
 
     # Fitness age changes about weekly, so one request per run (not per day).
     try:
@@ -170,6 +189,7 @@ def sync(
     except Exception as e:  # not worth failing the run over
         log.warning("Fitness age unavailable: %s", e)
 
+    days = days or [today]  # today is never final; this only guards odd clocks
     log.info("Fetching %d day(s): %s .. %s", len(days), days[-1], days[0])
 
     # 2. Activities over the same span (plus a couple of days for late uploads).
@@ -214,12 +234,30 @@ def sync(
         conn.commit()
         detailed += 1
 
+    filled = 0 if quick else _backfill_intraday(conn, api, paced)
+
     db.set_meta(conn, "last_success", db.now_iso())
     conn.commit()
-    return {"days": len(days), "activities": len(activities), "detailed": detailed}
+    return {
+        "days": len(days), "activities": len(activities), "detailed": detailed,
+        "backfilled": filled,
+    }  # fmt: skip
 
 
-def run(*, force: bool = False, since: date | None = None, refetch: bool = False) -> int:
+def _backfill_intraday(conn, api, paced) -> int:
+    days = db.days_missing_sources(conn, list(INTRADAY))[:INTRADAY_BACKFILL_PER_RUN]
+    for ds in days:
+        for source, fn in INTRADAY.items():
+            db.save_raw(conn, ds, source, paced(lambda fn=fn: fn(api, ds), f"{source} {ds}"))
+        conn.commit()
+    if days:
+        log.info("Backfilled minute-level data for %d older day(s)", len(days))
+    return len(days)
+
+
+def run(
+    *, force: bool = False, since: date | None = None, refetch: bool = False, quick: bool = False
+) -> int:
     """Entry point for launchd/CLI. Returns a process exit code."""
     config.ensure_dirs()
     lock = open(config.lock_path(), "w")
@@ -237,6 +275,7 @@ def run(*, force: bool = False, since: date | None = None, refetch: bool = False
             connect=lambda: auth.connect(interactive=False, force=force),
             since=since,
             refetch=refetch,
+            quick=quick,
         )
     except auth.LoginBlocked as e:
         log.warning("Skipped: %s", e)

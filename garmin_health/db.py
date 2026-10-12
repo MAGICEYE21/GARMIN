@@ -164,6 +164,17 @@ def daily_status(conn: sqlite3.Connection) -> dict[str, bool]:
     return {r[0]: bool(r[1]) for r in conn.execute("SELECT date, final FROM daily")}
 
 
+def days_missing_sources(conn: sqlite3.Connection, sources: list[str]) -> list[str]:
+    """Stored days (newest first) that lack a raw response for any of `sources`."""
+    marks = ", ".join("?" for _ in sources)
+    rows = conn.execute(
+        f"SELECT d.date FROM daily d WHERE (SELECT COUNT(*) FROM raw r WHERE r.date = d.date "
+        f"AND r.source IN ({marks})) < ? ORDER BY d.date DESC",
+        [*sources, len(sources)],
+    )
+    return [r[0] for r in rows]
+
+
 def daily_range(conn: sqlite3.Connection, start: str, end: str) -> list[dict]:
     rows = conn.execute(
         "SELECT * FROM daily WHERE date BETWEEN ? AND ? ORDER BY date", (start, end)

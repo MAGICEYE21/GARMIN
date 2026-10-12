@@ -120,6 +120,7 @@ def cmd_sync(args) -> int:
         force=args.force,
         since=date.fromisoformat(args.since) if args.since else None,
         refetch=args.refetch,
+        quick=args.quick,
     )
 
 
@@ -204,6 +205,7 @@ def build_parser() -> argparse.ArgumentParser:
     sy.add_argument("--force", action="store_true", help="ignore rate-limit cooldown")
     sy.add_argument("--since", help="also backfill from this date, YYYY-MM-DD")
     sy.add_argument("--refetch", action="store_true", help="re-download days already stored")
+    sy.add_argument("--quick", action="store_true", help="skip the minute-level backfill")
 
     se = sub.add_parser("serve", help="run the dashboard")
     se.add_argument("--host", default=config.WEB_HOST)
