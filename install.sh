@@ -39,6 +39,11 @@ install_launchd() {
             "$PROJECT/launchd/$label.plist" > "$dest"
         plutil -lint "$dest" >/dev/null
         launchctl bootout "$DOMAIN/$label" 2>/dev/null || true
+        # bootout returns before the job is gone; bootstrapping too early fails with error 5.
+        for _ in $(seq 20); do
+            launchctl print "$DOMAIN/$label" >/dev/null 2>&1 || break
+            sleep 0.5
+        done
         launchctl bootstrap "$DOMAIN" "$dest"
         echo "Loaded $label"
     done
