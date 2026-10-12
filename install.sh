@@ -2,6 +2,9 @@
 # ./install.sh           create .venv and install dependencies
 # ./install.sh launchd   install/reload the 06:30 + 21:00 sync job and the dashboard
 # ./install.sh all       everything: venv, Garmin login, schedule, first sync, dashboard
+#
+# GARMIN_HEALTH_HOST=0.0.0.0 ./install.sh launchd   also serve the dashboard to
+# phones on the home network. Once set, later runs keep it.
 set -euo pipefail
 PROJECT="$(cd "$(dirname "$0")" && pwd)"
 LOGS="$HOME/Library/Logs/garmin-health"
@@ -30,12 +33,18 @@ install_venv() {
 
 install_launchd() {
     [ -x "$PROJECT/.venv/bin/python" ] || { echo "Run ./install.sh first." >&2; exit 1; }
+    # Keep the host from the installed job unless one is given now.
+    local web="$AGENTS/com.garmin-health.web.plist" host="${GARMIN_HEALTH_HOST:-}"
+    if [ -z "$host" ] && [ -f "$web" ]; then
+        host="$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:GARMIN_HEALTH_HOST' "$web" 2>/dev/null || true)"
+    fi
+    host="${host:-127.0.0.1}"
     mkdir -p "$LOGS" "$AGENTS"
     chmod 700 "$LOGS"
     for name in sync web; do
         label="com.garmin-health.$name"
         dest="$AGENTS/$label.plist"
-        sed -e "s|__PROJECT__|$PROJECT|g" -e "s|__LOGS__|$LOGS|g" \
+        sed -e "s|__PROJECT__|$PROJECT|g" -e "s|__LOGS__|$LOGS|g" -e "s|__HOST__|$host|g" \
             "$PROJECT/launchd/$label.plist" > "$dest"
         plutil -lint "$dest" >/dev/null
         launchctl bootout "$DOMAIN/$label" 2>/dev/null || true
@@ -50,6 +59,9 @@ install_launchd() {
     echo
     echo "Sync runs at 06:30 and 21:00. Logs: $LOGS"
     echo "Dashboard: http://127.0.0.1:8765/"
+    if [ "$host" = "0.0.0.0" ]; then
+        echo "On your phone (same Wi-Fi): http://$(scutil --get LocalHostName 2>/dev/null || hostname -s).local:8765/"
+    fi
     echo "Run a sync now with: launchctl kickstart $DOMAIN/com.garmin-health.sync"
 }
 

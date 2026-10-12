@@ -148,9 +148,11 @@ baseline, resting HR against your 30-day average, Body Battery at wake, and
 Garmin's training readiness. 75 and up is "good", 50 to 74 is "fair", below 50
 is "low". The reasons behind the score are listed under it.
 
-The dashboard listens only on `127.0.0.1`. To view it from your phone on your
-home Wi-Fi, set `GARMIN_HEALTH_HOST=0.0.0.0` (add an `EnvironmentVariables` dict
-to the web plist). It has no password, so only do this on a network you trust.
+By default the dashboard listens only on `127.0.0.1`. To open it from your
+phone on your home Wi-Fi, run `GARMIN_HEALTH_HOST=0.0.0.0 ./install.sh launchd`
+once (later runs keep the setting), then browse to
+`http://<your-mac-name>.local:8765/`. It has no password, so only do this on a
+network you trust.
 
 ## Daily JSON in Google Drive (for a cloud agent)
 

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Template: install.sh fills in __PROJECT__ and __LOGS__. -->
+<!-- Template: install.sh fills in __PROJECT__, __LOGS__ and __HOST__. -->
 <plist version="1.0">
 <dict>
     <key>Label</key>
@@ -12,6 +12,12 @@
     </array>
     <key>WorkingDirectory</key>
     <string>__PROJECT__</string>
+    <!-- 127.0.0.1: this Mac only. 0.0.0.0: also phones on the home network. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>GARMIN_HEALTH_HOST</key>
+        <string>__HOST__</string>
+    </dict>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
