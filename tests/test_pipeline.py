@@ -325,3 +325,62 @@ def test_extract_tolerates_garbage():
     assert extract.parse_day({"sleep": [], "hrv": None, "readiness": {}, "summary": "x"})
     assert extract.parse_summary({"averageStressLevel": -1})["stress_avg"] is None
     assert extract.parse_last_sync(None, {"lastSyncTimestampGMT": "2026-10-11T05:00:00.0"})
+
+
+def test_login_email_validation():
+    from garmin_health.cli import _valid_email
+
+    assert _valid_email("someone@example.com")
+    assert not _valid_email("someone@example.com\x1b[3~extra")
+    assert not _valid_email("someone@example.com extra")
+    assert not _valid_email("not-an-email")
+
+
+# ---- Google Drive export --------------------------------------------------
+
+
+def test_export_writes_day_files_and_latest(conn, tmp_path, monkeypatch, isolated):
+    import json
+
+    from garmin_health import export
+
+    out = tmp_path / "Garmin Daily"
+    monkeypatch.setenv("GARMIN_HEALTH_EXPORT_DIR", str(out))
+    isolated.set_password("garmin-health", "__email__", "me@example.com")
+    isolated.set_password("garmin-health", "me@example.com", "hunter2-secret")
+    state.update(needs_interactive_login_reason="Login failed for me@example.com")
+    run_sync(conn, FakeGarmin(TODAY))
+
+    assert export.write(conn, today=TODAY) == out
+    files = sorted(p.name for p in out.iterdir())
+    assert "latest.json" in files and f"{TODAY}.json" in files
+    assert len(files) == 92  # 91 stored days + latest.json
+    latest = json.loads((out / "latest.json").read_text())
+    assert latest["date"] == TODAY.isoformat()
+    assert latest == json.loads((out / f"{TODAY}.json").read_text())
+    assert "Garmin health summary" in latest["text"]
+    assert "sync_status" in latest
+    past = json.loads((out / f"{TODAY - timedelta(days=30)}.json").read_text())
+    assert past["date"] == (TODAY - timedelta(days=30)).isoformat()
+    every = "".join(p.read_text() for p in out.iterdir())
+    assert "hunter2-secret" not in every and "me@example.com" not in every
+
+    # Up-to-date day files are left alone on the next run.
+    stamp = (out / f"{TODAY - timedelta(days=30)}.json").stat().st_mtime_ns
+    export.write(conn, today=TODAY)
+    assert (out / f"{TODAY - timedelta(days=30)}.json").stat().st_mtime_ns == stamp
+
+
+def test_export_never_fails_sync(conn, monkeypatch):
+    from garmin_health import export
+
+    monkeypatch.setattr(export, "write", lambda conn: 1 / 0)
+    export.run(conn)  # logs, doesn't raise
+
+
+def test_run_exports_even_when_login_blocked(fake_login, tmp_path, monkeypatch):
+    out = tmp_path / "drive"
+    monkeypatch.setenv("GARMIN_HEALTH_EXPORT_DIR", str(out))
+    fake_login.behaviour = ["mfa"]
+    assert sync.run() == 3
+    assert (out / "latest.json").exists()

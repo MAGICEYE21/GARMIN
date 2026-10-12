@@ -26,7 +26,7 @@ from typing import Any
 
 from garminconnect import GarminConnectTooManyRequestsError
 
-from . import auth, config, credentials, db, extract
+from . import auth, config, credentials, db, export, extract
 from .retry import MfaRequired, classify, with_backoff
 
 log = logging.getLogger(__name__)
@@ -236,6 +236,8 @@ def run(*, force: bool = False, since: date | None = None, refetch: bool = False
         )
         return 0
     finally:
+        # Even after a failed run, so the agent sees the current sync status.
+        export.run(conn)
         conn.close()
         lock.close()
 

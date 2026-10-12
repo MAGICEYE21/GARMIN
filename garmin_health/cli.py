@@ -7,15 +7,24 @@ import getpass
 import json
 import logging
 import logging.handlers
+import re
 import sys
 from datetime import date, timedelta
 
 import keyring
 
-from . import auth, config, credentials, db, state, summary, sync
+from . import auth, config, credentials, db, export, state, summary, sync
 from .config import KEYCHAIN_EMAIL_ACCOUNT, KEYCHAIN_SERVICE
 
 log = logging.getLogger("garmin_health")
+
+_EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[A-Za-z]{2,}")
+
+
+def _valid_email(email: str) -> bool:
+    """Plain address only: no spaces or control characters (e.g. a stray
+    Delete key read as an escape sequence), so a typo never reaches Garmin."""
+    return email.isprintable() and _EMAIL_RE.fullmatch(email) is not None
 
 
 def _ask_mfa() -> str:
@@ -47,11 +56,19 @@ def print_sleep(api, day: str) -> None:
 def cmd_login(args) -> int:
     """Interactive: ask for the login, sign in (MFA if needed), store in Keychain."""
     config.ensure_dirs()
+    # Line editing for input(): without it, Delete and arrow keys end up in the
+    # typed text as escape sequences.
+    import readline  # noqa: F401
+
     saved = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_EMAIL_ACCOUNT)
     prompt = f"Garmin email [{saved}]: " if saved else "Garmin email: "
     email = input(prompt).strip() or saved
     if not email:
         print("An email is required.", file=sys.stderr)
+        return 2
+    if not _valid_email(email):
+        print(f"That doesn't look like an email address: {email!r}", file=sys.stderr)
+        print("Nothing was sent to Garmin. Run the login again.", file=sys.stderr)
         return 2
     password = getpass.getpass("Garmin password (not echoed): ")
 
@@ -124,6 +141,23 @@ def cmd_summary(args) -> int:
     return 0
 
 
+def cmd_export(args) -> int:
+    conn = db.connect()
+    try:
+        out = export.write(conn)
+    finally:
+        conn.close()
+    if out is None:
+        print(
+            "No export folder: install Google Drive for desktop and sign in, "
+            "or set GARMIN_HEALTH_EXPORT_DIR.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"Exported to {out}")
+    return 0
+
+
 def cmd_status(args) -> int:
     conn = db.connect()
     try:
@@ -137,6 +171,7 @@ def cmd_status(args) -> int:
         "database": str(config.db_path()),
         "tokens": str(config.token_dir()),
         "logs": str(config.log_dir()),
+        "export": str(export.export_dir() or "(none: Google Drive not found)"),
     }
     print(json.dumps(info, indent=2))
     return 0
@@ -177,6 +212,7 @@ def build_parser() -> argparse.ArgumentParser:
     su = sub.add_parser("summary", help="print the daily health summary")
     su.add_argument("--json", action="store_true")
 
+    sub.add_parser("export", help="write the daily JSON files to Google Drive now")
     sub.add_parser("status", help="show last sync, freshness and safety state")
     sub.add_parser("reparse", help="rebuild parsed columns from stored raw JSON")
     return p
@@ -189,6 +225,7 @@ COMMANDS = {
     "sync": cmd_sync,
     "serve": cmd_serve,
     "summary": cmd_summary,
+    "export": cmd_export,
     "status": cmd_status,
     "reparse": cmd_reparse,
 }

@@ -1,6 +1,6 @@
 #!/bin/bash
 # ./install.sh           create .venv and install dependencies
-# ./install.sh launchd   install/reload the 07:00 + 21:00 sync job and the dashboard
+# ./install.sh launchd   install/reload the 06:30 + 21:00 sync job and the dashboard
 # ./install.sh all       everything: venv, Garmin login, schedule, first sync, dashboard
 set -euo pipefail
 PROJECT="$(cd "$(dirname "$0")" && pwd)"
@@ -43,7 +43,7 @@ install_launchd() {
         echo "Loaded $label"
     done
     echo
-    echo "Sync runs at 07:00 and 21:00. Logs: $LOGS"
+    echo "Sync runs at 06:30 and 21:00. Logs: $LOGS"
     echo "Dashboard: http://127.0.0.1:8765/"
     echo "Run a sync now with: launchctl kickstart $DOMAIN/com.garmin-health.sync"
 }

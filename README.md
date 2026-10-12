@@ -5,7 +5,7 @@ local SQLite database on your Mac mini, and serves a small dashboard plus a JSON
 and text summary you can hand to an AI assistant. Everything stays on your Mac.
 
 ```
-launchd 07:00 / 21:00 ──> bin/garmin-health sync ──> Garmin Connect (python-garminconnect)
+launchd 06:30 / 21:00 ──> bin/garmin-health sync ──> Garmin Connect (python-garminconnect)
                                    │
                                    ▼
              ~/Library/Application Support/garmin-health/health.db  (SQLite)
@@ -81,7 +81,7 @@ This installs two LaunchAgents into `~/Library/LaunchAgents`:
 
 | Job | What it does |
 | --- | --- |
-| `com.garmin-health.sync` | runs `sync` at **07:00** and **21:00**. If the Mac was asleep at that time, launchd runs it on wake. |
+| `com.garmin-health.sync` | runs `sync` at **06:30** and **21:00**. If the Mac was asleep at that time, launchd runs it on wake. |
 | `com.garmin-health.web` | keeps the dashboard running at `127.0.0.1:8765` |
 
 To run a sync right away: `launchctl kickstart gui/$(id -u)/com.garmin-health.sync`.
@@ -101,6 +101,7 @@ bin/garmin-health sync       # fetch new and missing days (what launchd runs)
     --refetch                #   re-download days already stored
     --force                  #   ignore a rate-limit cooldown
 bin/garmin-health summary    # daily text summary  (--json for the JSON)
+bin/garmin-health export     # write the daily JSON files to Google Drive now (offline)
 bin/garmin-health status     # last watch sync, last run, safety state, file paths
 bin/garmin-health serve      # run the dashboard in the foreground
 bin/garmin-health reparse    # rebuild parsed columns from stored raw JSON (offline)
@@ -143,6 +144,26 @@ The dashboard listens only on `127.0.0.1`. To view it from your phone on your
 home Wi-Fi, set `GARMIN_HEALTH_HOST=0.0.0.0` (add an `EnvironmentVariables` dict
 to the web plist). It has no password, so only do this on a network you trust.
 
+## Daily JSON in Google Drive (for a cloud agent)
+
+At the end of every sync, including a failed or skipped one, the pipeline
+writes JSON files into a Google Drive folder named **Garmin Daily**:
+
+| File | Contents |
+| --- | --- |
+| `YYYY-MM-DD.json` | the summary for that day; rewritten while the day's data still changes |
+| `latest.json` | the newest summary, replaced on every run |
+
+Each file has the same fields as `/api/summary`, plus `sync_status` (rate-limit
+cooldown, or a login is needed) and `text` (the short brief). Check
+`freshness.stale` and `sync_status` before trusting the numbers. The files
+contain no email, password or tokens. Writing them never contacts Garmin.
+
+Setup: install Google Drive for desktop (`brew install --cask google-drive`)
+and sign in. The pipeline finds `My Drive/Garmin Daily` by itself. To write
+somewhere else, set `GARMIN_HEALTH_EXPORT_DIR`. Run `bin/garmin-health export`
+once to write every stored day right away. `status` shows the folder in use.
+
 ## How it avoids locking your Garmin account
 
 - **Tokens first.** Normal runs use the cached session tokens, which the library
@@ -181,7 +202,8 @@ week, is filled in on the next run.
 Settings can be overridden with environment variables: `GARMIN_HEALTH_HOME`,
 `GARMIN_HEALTH_DB`, `GARMIN_HEALTH_BACKFILL_DAYS` (90), `GARMIN_HEALTH_STALE_HOURS`
 (12), `GARMIN_HEALTH_REQUEST_DELAY` (1.0 s), `GARMIN_HEALTH_ACTIVITY_DETAILS`
-(1; set 0 to skip the time series), `GARMIN_HEALTH_HOST`, `GARMIN_HEALTH_PORT`.
+(1; set 0 to skip the time series), `GARMIN_HEALTH_HOST`, `GARMIN_HEALTH_PORT`,
+`GARMIN_HEALTH_EXPORT_DIR` (default: `Garmin Daily` in Google Drive).
 
 ## When Garmin breaks login
 
