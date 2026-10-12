@@ -115,6 +115,10 @@ bin/garmin-health logout     # delete cached tokens (--forget also removes the K
   Battery (daily range and value at wake), and training load (per-activity load
   with acute and chronic lines), plus the last 7 days of activities. It works on
   a phone, follows dark mode, and `?lang=he` switches to Hebrew labels.
+- **Sync now** (top of the page) pulls from Garmin Connect whatever the watch
+  has already uploaded. It can't reach the watch itself: the watch has to sync
+  first (phone app, Wi-Fi, or Garmin Express). To protect the account it starts
+  at most one run per 10 minutes and respects the rate-limit and login brakes.
 - `/api/summary`: the full health summary as JSON (today, recovery score and
   reasons, 30-day baselines, 7/30/90-day averages, recent activities, freshness).
 - `/api/summary.txt`: the same as a short text brief for an AI assistant:

@@ -384,3 +384,31 @@ def test_run_exports_even_when_login_blocked(fake_login, tmp_path, monkeypatch):
     fake_login.behaviour = ["mfa"]
     assert sync.run() == 3
     assert (out / "latest.json").exists()
+
+
+def test_sync_button_guards(tmp_path, monkeypatch):
+    from garmin_health import web
+
+    started = []
+    monkeypatch.setattr(web, "start_sync", lambda: started.append(1))
+    path = tmp_path / "w.db"
+    db.connect(path).close()
+    client = web.create_app(path).test_client()
+    hdr = {"X-Garmin-Health": "1"}
+
+    assert client.post("/api/sync").status_code == 403  # no header: cross-site
+    assert client.post("/api/sync", headers=hdr).get_json() == {"started": True}
+    assert client.get("/api/status").get_json()["running"] is False
+
+    # A run started a minute ago: the button waits instead of syncing again.
+    c = db.connect(path)
+    db.start_run(c)
+    c.close()
+    r = client.post("/api/sync", headers=hdr).get_json()
+    assert r["started"] is False and r["reason"] == "recent" and r["retry_after"] > 0
+
+    # Rate-limit cooldown: nothing is started.
+    monkeypatch.setattr(web, "MIN_SYNC_INTERVAL", timedelta(0))
+    auth.set_rate_limit_cooldown()
+    assert client.post("/api/sync", headers=hdr).get_json()["reason"] == "blocked"
+    assert started == [1]

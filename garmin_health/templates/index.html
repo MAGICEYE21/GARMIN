@@ -33,6 +33,12 @@
     border: 0; background: var(--card); color: var(--text); padding: 6px 12px; font: inherit; cursor: pointer;
   }
   .seg button.on { background: var(--text); color: var(--bg); }
+  .syncbtn {
+    border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 8px;
+    padding: 6px 12px; font: inherit; cursor: pointer;
+  }
+  .syncbtn:disabled { color: var(--muted); cursor: default; }
+  #syncmsg { color: var(--muted); font-size: 13px; }
   a.lang { color: var(--muted); text-decoration: none; font-size: 13px; }
   .banner { padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 14px; display: none; }
   .banner.stale { display: block; background: #fdf1e2; color: #7a4a0c; }
@@ -71,6 +77,8 @@
   <header>
     <h1 data-t="title">Garmin Health</h1>
     <div class="controls">
+      <span id="syncmsg"></span>
+      <button class="syncbtn" id="syncbtn" data-t="syncNow">Sync now</button>
       <div class="seg" id="range">
         <button data-days="7">7d</button><button data-days="30" class="on">30d</button><button data-days="90">90d</button>
       </div>
@@ -121,6 +129,11 @@ const T = {
     staleUnknown: "No watch sync recorded yet. Run a sync first.",
     synced: (t, h) => `Watch synced ${t} (${h}h ago)`, lastRun: "Last run", noActs: "No activities.",
     fromDate: d => `(${d})`,
+    syncNow: "Sync now", syncing: "Syncing…",
+    syncTip: "Pulls from Garmin Connect whatever the watch has already uploaded",
+    syncDone: "Done", syncFailed: s => `Sync ended: ${s}`,
+    syncRunning: "A sync is already running", syncRecent: m => `Synced recently; try again in ${m} min`,
+    syncBlocked: "Sync paused to protect the account",
   },
   he: {
     title: "בריאות Garmin", recovery: "התאוששות", sleep: "שינה", hrv: "HRV", rhr: "דופק במנוחה",
@@ -135,6 +148,11 @@ const T = {
     staleUnknown: "עדיין לא נרשם סנכרון. הריצו סנכרון.",
     synced: (t, h) => `סונכרן ${t} (לפני ${h} ש׳)`, lastRun: "ריצה אחרונה", noActs: "אין פעילויות.",
     fromDate: d => `(${d})`,
+    syncNow: "סנכרן עכשיו", syncing: "מסנכרן…",
+    syncTip: "מושך מ-Garmin Connect את מה שהשעון כבר העלה",
+    syncDone: "עודכן", syncFailed: s => `הסנכרון הסתיים: ${s}`,
+    syncRunning: "סנכרון כבר רץ", syncRecent: m => `סונכרן לא מזמן; נסו שוב בעוד ${m} דק׳`,
+    syncBlocked: "הסנכרון מושהה כדי להגן על החשבון",
   },
 }[LANG];
 document.querySelectorAll("[data-t]").forEach(el => { if (T[el.dataset.t]) el.textContent = T[el.dataset.t]; });
@@ -256,6 +274,36 @@ function setRange(n) {
 document.querySelectorAll("#range button").forEach(b => b.addEventListener("click", () => setRange(Number(b.dataset.days))));
 setRange([7, 30, 90].includes(days) ? days : 30);
 loadSummary();
+
+const syncBtn = document.getElementById("syncbtn"), syncMsg = document.getElementById("syncmsg");
+syncBtn.title = T.syncTip;
+const pause = ms => new Promise(r => setTimeout(r, ms));
+const runStart = st => st.last_run && st.last_run.started_at;
+async function waitForSync(before) {
+  syncBtn.disabled = true; syncBtn.textContent = T.syncing; syncMsg.textContent = "";
+  let st;
+  // Wait for a run newer than the one before the click to start and finish.
+  for (let i = 0; i < 200; i++) {
+    await pause(3000);
+    st = await (await fetch("/api/status")).json();
+    if (!st.running && (before === undefined || runStart(st) !== before)) break;
+  }
+  syncBtn.disabled = false; syncBtn.textContent = T.syncNow;
+  const status = st.last_run && st.last_run.status;
+  syncMsg.textContent = status === "ok" ? T.syncDone : T.syncFailed(status || "?");
+  document.getElementById("banner").className = "banner";
+  loadSummary(); loadTrends(days);
+}
+syncBtn.addEventListener("click", async () => {
+  syncBtn.disabled = true;
+  const before = runStart(await (await fetch("/api/status")).json());
+  const r = await (await fetch("/api/sync", { method: "POST", headers: { "X-Garmin-Health": "1" } })).json();
+  if (r.started) return waitForSync(before);
+  if (r.reason === "running") return waitForSync();
+  syncBtn.disabled = false;
+  syncMsg.textContent = r.reason === "recent" ? T.syncRecent(Math.ceil(r.retry_after / 60))
+    : r.reason === "blocked" ? `${T.syncBlocked}: ${r.message}` : r.reason;
+});
 </script>
 </body>
 </html>
