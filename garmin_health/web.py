@@ -1,7 +1,9 @@
 """Local dashboard and JSON API.
 
-  /                    dashboard (add ?lang=he for Hebrew)
+  /                    dashboard, Hebrew (add ?lang=en for English); installable
+                       on an iPhone home screen (Share > Add to Home Screen)
   /api/trends?days=30  chart series (7, 30 or 90)
+  /api/activities      activities of the last ?days=30
   /api/summary         health summary JSON
   /api/summary.txt     short daily text summary for an AI assistant
   /api/status          freshness / last run / whether a sync is running
@@ -11,9 +13,10 @@
 from __future__ import annotations
 
 import fcntl
+import json
 import subprocess
 import sys
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from flask import Flask, Response, jsonify, render_template, request
@@ -59,8 +62,38 @@ def create_app(db_path=None) -> Flask:
 
     @app.get("/")
     def index():
-        lang = "he" if request.args.get("lang") == "he" else "en"
+        lang = "en" if request.args.get("lang") == "en" else "he"
         return render_template("index.html", lang=lang)
+
+    @app.get("/manifest.webmanifest")
+    def manifest():
+        icons = [
+            {"src": f"/static/icon-{n}.png", "sizes": f"{n}x{n}", "type": "image/png"}
+            for n in (192, 512)
+        ]
+        body = {
+            "name": "Garmin Health",
+            "short_name": "Health",
+            "start_url": "/",
+            "display": "standalone",
+            "background_color": "#0a0b0d",
+            "theme_color": "#0a0b0d",
+            "icons": icons,
+        }
+        return Response(json.dumps(body), mimetype="application/manifest+json")
+
+    @app.get("/api/activities")
+    def api_activities():
+        days = max(1, min(request.args.get("days", 30, type=int), 365))
+        today = date.today()
+        c = conn()
+        try:
+            acts = db.activities_range(
+                c, (today - timedelta(days=days)).isoformat(), today.isoformat()
+            )
+        finally:
+            c.close()
+        return jsonify(acts[::-1])
 
     @app.get("/api/trends")
     def api_trends():

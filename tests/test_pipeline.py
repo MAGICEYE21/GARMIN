@@ -310,8 +310,12 @@ def test_web_routes(tmp_path):
     c.close()
     client = create_app(path).test_client()
     assert client.get("/").status_code == 200
-    assert "עברית" in client.get("/").get_data(as_text=True)
-    assert 'dir="rtl"' in client.get("/?lang=he").get_data(as_text=True)
+    assert 'dir="rtl"' in client.get("/").get_data(as_text=True)
+    assert 'dir="ltr"' in client.get("/?lang=en").get_data(as_text=True)
+    m = client.get("/manifest.webmanifest")
+    assert m.mimetype == "application/manifest+json" and m.get_json()["display"] == "standalone"
+    acts = client.get("/api/activities?days=30").get_json()
+    assert acts and acts[0]["date"] >= acts[-1]["date"]
     assert len(client.get("/api/trends?days=7").get_json()["dates"]) == 7
     assert len(client.get("/api/trends?days=999").get_json()["dates"]) == 30
     assert "recovery" in client.get("/api/summary").get_json()

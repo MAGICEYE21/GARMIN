@@ -110,11 +110,15 @@ bin/garmin-health logout     # delete cached tokens (--forget also removes the K
 
 ## Dashboard and API
 
-- `/` shows a recovery score with today's key numbers, then 7/30/90-day charts
-  for sleep (stages and score), HRV (with your baseline band), resting HR, Body
-  Battery (daily range and value at wake), and training load (per-activity load
-  with acute and chronic lines), plus the last 7 days of activities. It works on
-  a phone, follows dark mode, and `?lang=he` switches to Hebrew labels.
+- `/` is a phone-first dashboard, in Hebrew by default (`?lang=en` for
+  English). The first screen shows only today: a recovery ring with one plain
+  sentence, small rings for sleep, Body Battery and readiness, last night's
+  sleep stages, HRV against your range, resting HR, stress, steps and recent
+  activities. The side menu (top corner) opens 7/30/90-day trend charts, the
+  full activity list, Sync now, and the language switch.
+- **On an iPhone:** open the dashboard in Safari, tap Share > **Add to Home
+  Screen**. It opens full screen like an app and refreshes when you return to it.
+  The phone has to reach the Mac (see `GARMIN_HEALTH_HOST` below).
 - **Sync now** (top of the page) pulls from Garmin Connect whatever the watch
   has already uploaded. It can't reach the watch itself: the watch has to sync
   first (phone app, Wi-Fi, or Garmin Express). To protect the account it starts
