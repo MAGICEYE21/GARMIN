@@ -28,6 +28,10 @@ sync is more than 12 hours old.
 You need macOS, Python 3.12 or newer (`brew install python@3.13`), and your
 Garmin Connect login.
 
+**Quick way, one command:** `./install.sh all` runs every step below in order.
+It stops once to ask for your Garmin password and MFA code, then installs the
+schedule, starts the first sync in the background and opens the dashboard.
+
 ```bash
 git clone <this repo> ~/garmin-health && cd ~/garmin-health
 ./install.sh                      # creates .venv, installs pinned dependencies
