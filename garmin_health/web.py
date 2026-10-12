@@ -24,8 +24,9 @@ from flask import Flask, Response, jsonify, render_template, request
 from . import auth, config, db, summary
 
 # The Sync button can't start runs closer together than this, however often
-# it is clicked, so it can't get the account rate-limited.
-MIN_SYNC_INTERVAL = timedelta(minutes=10)
+# it is clicked. A run whose watch data hasn't changed costs only two
+# requests, so a short gap is still gentle on Garmin.
+MIN_SYNC_INTERVAL = timedelta(minutes=2)
 
 
 def sync_running() -> bool:
@@ -145,7 +146,8 @@ def create_app(db_path=None) -> Flask:
             run = db.last_run(c)
         finally:
             c.close()
-        if run and run.get("started_at"):
+        # A run that never reached Garmin (cooldown) doesn't count.
+        if run and run.get("started_at") and run.get("status") != "skipped":
             wait = datetime.fromisoformat(run["started_at"]) + MIN_SYNC_INTERVAL
             now = datetime.now().astimezone()
             if wait > now:

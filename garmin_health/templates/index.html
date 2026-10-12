@@ -264,8 +264,10 @@ const T = {
     noActs: "No activities in the last 7 days.", loadU: "load",
     syncNow: "Sync now", syncTip: "Pulls whatever the watch already uploaded to Garmin",
     syncDone: "Updated", syncFailed: s => `Sync ended: ${s}`, syncRunning: "A sync is already running",
-    syncRecent: m => `Synced recently. Try again in ${m} min`, syncBlocked: "Sync paused to protect the account",
-    watchAgo: h => h < 1 ? "Watch synced just now" : `Watch synced ${h} h ago`,
+    syncRecent: m => `Checked a moment ago. Try again in ${m} min`, syncBlocked: "Sync paused to protect the account",
+    watchAgo: r => `Watch uploaded ${r}`, checked: r => `checked ${r}`,
+    ago: m => m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 48 * 60 ? `${Math.floor(m / 60)} h ago` : `${Math.floor(m / 1440)} days ago`,
+    noNew: t => `Nothing new: the watch hasn't uploaded since ${t}. Sync the watch, then tap again.`,
     stale: h => `The watch hasn't uploaded in ${h} hours. Sync it (Wi-Fi or the phone app) to get fresh data.`,
     noSync: "No watch sync recorded yet.",
     lastRun: s => `Last run: ${s.replace(/_/g, " ")}`,
@@ -301,11 +303,13 @@ const T = {
     noActs: "אין פעילויות ב-7 הימים האחרונים.", loadU: "עומס",
     syncNow: "סנכרן עכשיו", syncTip: "מושך מ-Garmin את מה שהשעון כבר העלה",
     syncDone: "עודכן", syncFailed: s => `הסנכרון הסתיים: ${s}`, syncRunning: "סנכרון כבר רץ",
-    syncRecent: m => `סונכרן לא מזמן. נסה שוב בעוד ${m} דק׳`, syncBlocked: "הסנכרון מושהה כדי להגן על החשבון",
-    watchAgo: h => h < 1 ? "השעון סונכרן הרגע" : `השעון סונכרן לפני ${h} ש׳`,
+    syncRecent: m => `נבדק הרגע. נסה שוב בעוד ${m} דק׳`, syncBlocked: "הסנכרון מושהה כדי להגן על החשבון",
+    watchAgo: r => `השעון העלה ${r}`, checked: r => `נבדק ${r}`,
+    ago: m => m < 1 ? "עכשיו" : m < 60 ? `לפני ${m} דק׳` : m < 48 * 60 ? `לפני ${Math.floor(m / 60)} ש׳` : `לפני ${Math.floor(m / 1440)} ימים`,
+    noNew: t => `אין נתונים חדשים: השעון לא העלה מאז ${t}. סנכרן את השעון ולחץ שוב.`,
     stale: h => `השעון לא העלה נתונים ${h} שעות. סנכרן אותו (Wi-Fi או אפליקציה) כדי לקבל נתונים עדכניים.`,
     noSync: "עדיין לא נרשם סנכרון של השעון.",
-    lastRun: s => `ריצה אחרונה: ${({ ok: "תקינה", error: "שגיאה", rate_limited: "נחסמה זמנית", login_needed: "נדרשת התחברות", skipped: "דולגה" })[s] || s}`,
+    lastRun: s => `ריצה אחרונה: ${({ ok: "תקינה", error: "שגיאה", rate_limited: "נחסמה זמנית", login_needed: "נדרשת התחברות", skipped: "דולגה", unchanged: "אין חדש מהשעון" })[s] || s}`,
     hours: "שעות", lastNight: "לילה אחרון", weekly: "ממוצע 7 ימים", baseline: "טווח",
     high: "גבוה", lowL: "נמוך", atWake: "בהתעוררות", daily: "פעילות", acute: "אקוטי", chronic: "כרוני",
     days: ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"],
@@ -385,6 +389,18 @@ function toast(msg) {
 }
 
 // ---- today ----------------------------------------------------------------
+// The top line: when the watch last uploaded to Garmin, and when this Mac last
+// checked. Re-rendered every 30 s so "ago" stays true while the app is open.
+let fresh = null;
+const minsSince = iso => Math.max(0, Math.floor((Date.now() - new Date(iso)) / 60000));
+function renderFresh() {
+  if (!fresh) return;
+  const parts = [fresh.watch ? T.watchAgo(T.ago(minsSince(fresh.watch))) : T.noSync];
+  if (fresh.checked) parts.push(T.checked(T.ago(minsSince(fresh.checked))));
+  $("fresh").textContent = parts.join(" · ");
+  $("fresh").className = fresh.stale ? "stale" : "";
+}
+setInterval(renderFresh, 30000);
 let lastLoad = 0;
 async function loadToday() {
   lastLoad = Date.now();
@@ -393,8 +409,8 @@ async function loadToday() {
 
   if (viewName() === "today") $("title").textContent = todayTitle();
   const h = f.hours_since_sync == null ? null : Math.round(f.hours_since_sync);
-  $("fresh").textContent = h == null ? T.noSync : T.watchAgo(h);
-  $("fresh").className = f.stale ? "stale" : "";
+  fresh = { watch: f.last_watch_sync, checked: f.last_run && f.last_run.finished_at, stale: f.stale };
+  renderFresh();
 
   const alert = $("alert");
   const lr = f.last_run && f.last_run.status;
@@ -468,7 +484,7 @@ async function loadToday() {
 
   $("foot").innerHTML = [
     f.device ? esc(f.device) : "",
-    f.last_watch_sync ? `${T.watchAgo(h)}` : T.noSync,
+    f.last_watch_sync ? T.watchAgo(T.ago(minsSince(f.last_watch_sync))) : T.noSync,
     lr ? T.lastRun(lr) : "",
   ].filter(Boolean).join("<br>");
 
@@ -623,7 +639,9 @@ async function waitForSync(before) {
   }
   $("syncbtn").classList.remove("spin");
   const status = st.last_run && st.last_run.status;
-  toast(status === "ok" ? T.syncDone : T.lastRun(status || "?"));
+  toast(status === "ok" ? T.syncDone
+    : status === "unchanged" ? T.noNew(clock(st.last_watch_sync) || "?")
+    : T.lastRun(status || "?"));
   refreshAll();
 }
 async function sync() {

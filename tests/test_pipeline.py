@@ -59,7 +59,8 @@ def test_first_run_backfills_90_days(conn):
 def test_second_run_only_refetches_non_final_days(conn, synced_at, refetched):
     last_sync = synced_at.astimezone()
     run_sync(conn, FakeGarmin(TODAY, last_sync))
-    api = FakeGarmin(TODAY, last_sync)
+    # The watch uploaded again (a few minutes later), so this run isn't skipped.
+    api = FakeGarmin(TODAY, last_sync + timedelta(minutes=5))
     run_sync(conn, api)
     assert [c[1] for c in api.calls if c[0] == "get_sleep_data"] == refetched
     assert conn.execute("SELECT COUNT(*) FROM daily").fetchone()[0] == 91
@@ -451,3 +452,29 @@ def test_old_database_gets_new_columns(tmp_path):
     cols = {r[1] for r in c.execute("PRAGMA table_info(daily)")}
     assert {"spo2_avg", "spo2_sleep_low", "resting_hr"} <= cols
     c.close()
+
+
+def _sync_now(conn, api):
+    return sync.sync(conn, connect=lambda: api, sleep=lambda s: None, request_delay=0)
+
+
+def test_run_with_no_new_watch_upload_stops_early(conn):
+    synced = datetime.now().astimezone() - timedelta(hours=3)
+    api = FakeGarmin(date.today(), synced)
+    _sync_now(conn, api)
+    before = len(api.calls)
+    result = _sync_now(conn, api)  # same upload time, last run long after it
+    assert result.get("unchanged") is True
+    assert len(api.calls) - before == 2  # device last used + today's summary only
+
+    # A new upload from the watch means a normal run again.
+    api.last_sync = datetime.now().astimezone() - timedelta(hours=1)
+    result = _sync_now(conn, api)
+    assert not result.get("unchanged") and result["days"] >= 1
+
+
+def test_run_soon_after_upload_still_refetches(conn):
+    api = FakeGarmin(date.today(), datetime.now().astimezone() - timedelta(minutes=5))
+    _sync_now(conn, api)
+    result = _sync_now(conn, api)
+    assert not result.get("unchanged")  # Garmin may still be computing scores

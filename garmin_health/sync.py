@@ -102,6 +102,26 @@ def notify(message: str) -> None:
         pass
 
 
+# Garmin finishes computing some numbers (sleep score, readiness) a little
+# after the watch uploads, so a run this soon after an upload still refetches.
+SETTLE_TIME = timedelta(minutes=30)
+
+
+def _nothing_new(conn, last_sync: datetime | None, previous: str | None, days: list[date]) -> bool:
+    """True when the watch hasn't uploaded since a complete, settled run.
+
+    Then Garmin has nothing we don't already have, so the run stops after its
+    first two requests instead of re-downloading today.
+    """
+    if last_sync is None or previous is None or datetime.fromisoformat(previous) != last_sync:
+        return False
+    success = db.get_meta(conn, "last_success")
+    if not success or datetime.fromisoformat(success) < last_sync + SETTLE_TIME:
+        return False
+    stored = db.daily_status(conn)
+    return all(d.isoformat() in stored for d in days)
+
+
 def sync(
     conn,
     *,
@@ -126,10 +146,18 @@ def sync(
     last_used = paced(lambda: api.get_device_last_used(), "device last used")
     summary_today = paced(lambda: api.get_user_summary(today.isoformat()), "summary")
     last_sync = extract.parse_last_sync(last_used, summary_today)
+    previous_sync = db.get_meta(conn, "last_sync")
     db.set_meta(conn, "last_sync", last_sync.isoformat() if last_sync else None)
     db.set_meta(conn, "last_device", extract.dig(last_used, "lastUsedDeviceName"))
     conn.commit()
     log.info("Last watch sync: %s", last_sync)
+
+    days = days_to_fetch(
+        db.daily_status(conn), today, config.BACKFILL_DAYS, since=since, refetch=refetch
+    )
+    if not (since or refetch) and _nothing_new(conn, last_sync, previous_sync, days):
+        log.info("Watch hasn't uploaded since %s; nothing new to fetch", last_sync)
+        return {"unchanged": True, "last_sync": last_sync, "days": 0, "activities": 0, "detailed": 0}
 
     # Fitness age changes about weekly, so one request per run (not per day).
     try:
@@ -142,9 +170,6 @@ def sync(
     except Exception as e:  # not worth failing the run over
         log.warning("Fitness age unavailable: %s", e)
 
-    days = days_to_fetch(
-        db.daily_status(conn), today, config.BACKFILL_DAYS, since=since, refetch=refetch
-    )
     log.info("Fetching %d day(s): %s .. %s", len(days), days[-1], days[0])
 
     # 2. Activities over the same span (plus a couple of days for late uploads).
@@ -236,6 +261,10 @@ def run(*, force: bool = False, since: date | None = None, refetch: bool = False
         db.finish_run(conn, run_id, "error", message=f"{type(e).__name__}: {e}"[:500])
         return 1
     else:
+        if result.get("unchanged"):
+            when = result["last_sync"].isoformat(timespec="minutes")
+            db.finish_run(conn, run_id, "unchanged", message=f"No new watch upload since {when}")
+            return 0
         log.info(
             "Sync OK: %d day(s), %d activities listed, %d new activity details",
             result["days"],
