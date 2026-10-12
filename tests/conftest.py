@@ -28,6 +28,8 @@ class MemoryKeyring(keyring.backend.KeyringBackend):
 def isolated(tmp_path, monkeypatch):
     monkeypatch.setenv("GARMIN_HEALTH_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("GARMIN_HEALTH_LOGS", str(tmp_path / "logs"))
+    # Never let a test find and write to the real Google Drive folder.
+    monkeypatch.setenv("GARMIN_HEALTH_EXPORT_DIR", str(tmp_path / "export"))
     kr = MemoryKeyring()
     keyring.set_keyring(kr)
     yield kr
